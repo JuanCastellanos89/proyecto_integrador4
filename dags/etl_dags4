@@ -30,7 +30,7 @@ with DAG(
     schedule_interval="@daily",
     catchup=False,
     description="Airflow",
-    tags=["elt", "olist"]
+    tags=["etl", "olist"]
 ) as dag:
 
     def extract_task():
