@@ -25,11 +25,11 @@ default_args = {
 }
 
 with DAG(
-    dag_id="elt_pipeline_dag",
+    dag_id="etl_dags4",
     default_args=default_args,
     schedule_interval="@daily",
     catchup=False,
-    description="Orquestación del pipeline ELT de Olist con Airflow",
+    description="Airflow",
     tags=["elt", "olist"]
 ) as dag:
 
