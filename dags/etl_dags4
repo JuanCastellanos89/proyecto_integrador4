@@ -1,66 +1,84 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from datetime import datetime
+from datetime import datetime, timedelta
 import sys
-
-sys.path.append('/opt/airflow/proyecto_integrador4/scripts/src')
-from extract import extract
-from load import load
-from transform import run_queries
-from config import (
-    DATASET_ROOT_PATH,
-    SQLITE_BD_ABSOLUTE_PATH,
-    get_csv_to_table_mapping,
-    PUBLIC_HOLIDAYS_URL
-)
-
-from sqlalchemy import create_engine
-
-
-engine = create_engine(f"sqlite:///{SQLITE_BD_ABSOLUTE_PATH}")
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from src.transform import run_queries
 
 default_args = {
-    'owner': 'airflow',
-    'start_date': datetime(2024, 1, 1),
+    "owner": "airflow",
+    "start_date": datetime(2025, 4, 1),
+    "retries": 1,
+    "retry_delay": timedelta(minutes=2),
 }
 
 with DAG(
-    dag_id="etl_dags4",
+    dag_id="etl_proyecto",
     default_args=default_args,
     schedule_interval="@daily",
     catchup=False,
-    description="Airflow",
-    tags=["etl", "olist"]
 ) as dag:
+    def run_extract():
+        import sys
+        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+        from src.extract import extract
+        from src import config
 
-    def extract_task():
-        return extract(
-            csv_folder=DATASET_ROOT_PATH,
-            csv_table_mapping=get_csv_to_table_mapping(),
-            public_holidays_url=PUBLIC_HOLIDAYS_URL
+        csv_folder = config.DATASET_ROOT_PATH
+        public_holidays_url = config.PUBLIC_HOLIDAYS_URL
+        csv_table_mapping = config.get_csv_to_table_mapping()
+        return extract(csv_folder, csv_table_mapping, public_holidays_url)
+
+    def run_load(ti):
+        import sys
+        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+        from src.load import load
+        from src import config
+        from sqlalchemy import create_engine
+        from pathlib import Path
+
+        # Obtener datos de la tarea anterior
+        csv_dataframes = ti.xcom_pull(task_ids="extract_task")
+
+        # Configurar base de datos
+        Path(config.SQLITE_BD_ABSOLUTE_PATH).touch()
+        ENGINE = create_engine(
+            rf"sqlite:///{config.SQLITE_BD_ABSOLUTE_PATH}", echo=False
         )
 
-    def load_task(**context):
-        extracted_data = context['ti'].xcom_pull(task_ids='extract_data')
-        load(extracted_data, engine)
-
+        # Cargar datos
+        load(data_frames=csv_dataframes, database=ENGINE)
+    
     def transform_task():
-        run_queries(engine)
+        from pathlib import Path
+        from src import config
+        from sqlalchemy import create_engine
+        import sys
+        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+        from src.transform import run_queries
+        Path(config.SQLITE_BD_ABSOLUTE_PATH).touch()
+        ENGINE = create_engine(
+            rf"sqlite:///{config.SQLITE_BD_ABSOLUTE_PATH}", echo=False
+        )
 
-    task_extract = PythonOperator(
-        task_id="extract_data",
-        python_callable=extract_task
+        run_queries(ENGINE)
+    
+
+    extract_task = PythonOperator(
+        task_id="extract_task",
+        python_callable=run_extract,
     )
 
-    task_load = PythonOperator(
-        task_id="load_data",
-        python_callable=load_task,
-        provide_context=True
+    load_task = PythonOperator(
+        task_id="load_task",
+        python_callable=run_load,
     )
+    
 
-    task_transform = PythonOperator(
+    transform_task = PythonOperator(
         task_id="transform_data",
         python_callable=transform_task
     )
 
-     task_extract >> task_load >> task_transform
+extract_task >> load_task >> transform_task
