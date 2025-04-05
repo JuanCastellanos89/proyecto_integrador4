@@ -1,0 +1,34 @@
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from datetime import datetime
+
+default_args = {
+    "owner": "airflow",
+    "start_date": datetime(2025, 4, 1),
+    "retries": 1,
+}
+
+# Crear el DAG
+with DAG(
+    dag_id="etl_dags4",
+    default_args=default_args,
+    schedule_interval="@daily",
+    catchup=False,
+) as dag:
+
+    extract_task = BashOperator(
+        task_id="extract",
+        bash_command="cd airflow/proyecto_integrador4 && python src/extract.py",
+    )
+
+    load_task = BashOperator(
+        task_id="load",
+        bash_command="cd airflow/proyecto_integrador4 && python src/load.py",
+    )
+
+    transform_task = BashOperator(
+        task_id="transform",
+        bash_command="cd airflow/proyecto_integrador4 && python src/transform.py",
+    )
+
+    extract_task >> load_task >> transform_task
