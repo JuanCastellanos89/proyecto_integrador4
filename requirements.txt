@@ -127,3 +127,4 @@ websocket-client==1.8.0
 widgetsnbextension==4.0.13
 apache-airflow==2.6.3
 datetime==5.2
+streamlit==1.32.2
